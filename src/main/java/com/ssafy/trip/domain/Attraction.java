@@ -35,6 +35,7 @@ public class Attraction {
     @Column(nullable = false)
     private Double longitude;
 
+    @Column(name = "content_type_id")
     private Integer contentTypeId;
     private String imageUrl;
     private String tel;
