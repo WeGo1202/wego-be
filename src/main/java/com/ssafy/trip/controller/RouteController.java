@@ -2,11 +2,13 @@
 package com.ssafy.trip.controller;
 
 import com.ssafy.trip.domain.Route;
-import com.ssafy.trip.dto.PlanRequest;
-import com.ssafy.trip.dto.RouteCreateRequest;
+import com.ssafy.trip.dto.*;
 //import com.ssafy.trip.service.RouteAiService;
+import com.ssafy.trip.dto.ai.AiRouteRequest;
+import com.ssafy.trip.service.RouteAiService;
 import com.ssafy.trip.service.RouteService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +21,7 @@ import java.util.List;
 public class RouteController {
 
     private final RouteService routeService;
+    private final RouteAiService routeAiService;
 
     // Route 생성 (여러 Plan을 묶어서)
     @PostMapping
@@ -63,6 +66,50 @@ public class RouteController {
         return ResponseEntity.ok(updated);
     }
 
+    // 🔹 공개 루트 게시판
+    @GetMapping("/public")
+    public ResponseEntity<Page<RouteSummaryResponse>> getPublicRoutes(
+            @RequestParam(defaultValue = "latest") String sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size
+    ) {
+        Page<RouteSummaryResponse> result = routeService.getPublicRoutes(sort, page, size);
+        return ResponseEntity.ok(result);
+    }
+
+    // 🔹 공개 여부 수정
+    @PatchMapping("/{id}/visibility")
+    public ResponseEntity<Route> updateVisibility(@PathVariable Long id,
+                                                  @RequestBody RouteVisibilityRequest request,
+                                                  Authentication authentication) {
+        String email = authentication.getName();
+        Route updated = routeService.updateVisibility(email, id, request);
+        return ResponseEntity.ok(updated);
+    }
+
+    // 🔹 좋아요 토글
+    @PostMapping("/{id}/like")
+    public ResponseEntity<RouteLikeResponse> toggleLike(@PathVariable Long id,
+                                                        Authentication authentication) {
+        String email = authentication.getName();
+        RouteLikeResponse res = routeService.toggleLike(email, id);
+        return ResponseEntity.ok(res);
+    }
+
+    /**
+     * 🔹 AI 기반 루트 생성
+     *  - body: AiRouteRequest (query, preferredRegion, totalDaysHint)
+     *  - 반환: 생성된 Route (id 포함)
+     */
+    @PostMapping("/ai")
+    public ResponseEntity<Route> createRouteByAi(
+            @RequestBody AiRouteRequest request,
+            Authentication authentication
+    ) {
+        String email = authentication.getName();
+        Route route = routeAiService.createRouteByGpt(email, request);
+        return ResponseEntity.ok(route);
+    }
 
 //    @GetMapping("/{routeId}/ai-summary")
 //    public ResponseEntity<AiRouteResponse> getAiSummary(@PathVariable Long routeId,

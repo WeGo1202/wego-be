@@ -12,6 +12,18 @@ public interface AttractionRepository extends JpaRepository<Attraction, Long> {
 
     Optional<Attraction> findByContentId(Long contentId);
 
+    // 이름만으로 검색
+    List<Attraction> findTop10ByTitleContainingIgnoreCaseOrderByIdAsc(String titlePart);
+
+    // 주소 일부로 검색
+    List<Attraction> findTop10ByAddr1ContainingIgnoreCaseOrderByIdAsc(String addrPart);
+
+    // 시/도 + 이름 같이 검색
+    List<Attraction> findTop10BySidoContainingIgnoreCaseAndTitleContainingIgnoreCaseOrderByIdAsc(
+            String sido,
+            String titlePart
+    );
+
     /**
      * 검색용 쿼리
      * - q: 제목 또는 주소(시도/구군/addr1/addr2) LIKE 검색

@@ -4,16 +4,21 @@ import com.ssafy.trip.domain.Member;
 import com.ssafy.trip.domain.Plan;
 import com.ssafy.trip.domain.Route;
 import com.ssafy.trip.domain.RoutePlan;
-import com.ssafy.trip.dto.PlanRequest;
-import com.ssafy.trip.dto.RouteCreateRequest;
+import com.ssafy.trip.dto.*;
 import com.ssafy.trip.repository.MemberRepository;
 import com.ssafy.trip.repository.PlanRepository;
 import com.ssafy.trip.repository.RouteRepository;
+import lombok.Builder;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +41,8 @@ public class RouteService {
                 .description(request.getDescription())
                 .totalDays(request.getTotalDays())
                 .member(member)
+                .isPublic(Boolean.TRUE.equals(request.getIsPublic()))
+                .likeCount(0L)
                 .build();
 
         // 3) Route에 포함될 Plan들 세팅
@@ -130,6 +137,67 @@ public class RouteService {
 
         // RoutePlan에 orphanRemoval = true 걸려 있으면 Route 삭제 시 자동 제거
         routeRepository.delete(route);
+    }
+
+
+    @Transactional(readOnly = true)
+    public Page<RouteSummaryResponse> getPublicRoutes(String sort, int page, int size) {
+
+        Sort sortSpec;
+        if ("popular".equalsIgnoreCase(sort)) {
+            // 좋아요 순
+            sortSpec = Sort.by(Sort.Direction.DESC, "likeCount");
+        } else {
+            // 기본: 최신순 (id DESC 또는 createdAt DESC, 둘 중 하나 선택)
+            sortSpec = Sort.by(Sort.Direction.DESC, "id");
+        }
+
+        Pageable pageable = PageRequest.of(page, size, sortSpec);
+
+        Page<Route> routes = routeRepository.findByIsPublicTrue(pageable);
+
+        // ❗ 여기서 네 static 메서드 재사용
+        return routes.map(RouteSummaryResponse::from);
+    }
+
+    // 🔹 공개 여부 수정
+    @Transactional
+    public Route updateVisibility(String loginEmail, Long routeId, RouteVisibilityRequest request) {
+        Member member = memberRepository.findByEmail(loginEmail)
+                .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
+
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route를 찾을 수 없습니다."));
+
+        if (!route.getMember().getId().equals(member.getId())) {
+            throw new IllegalArgumentException("해당 Route 수정 권한이 없습니다.");
+        }
+
+        if (request.getIsPublic() != null) {
+            route.setIsPublic(request.getIsPublic());
+        }
+
+        // JPA 영속 상태라 save() 안 해도 flush 되지만, 명시적으로
+        return routeRepository.save(route);
+    }
+
+    // 좋아요 (한 명이 여러 번 눌러도 그냥 +1/-1 관리)
+    @Transactional
+    public RouteLikeResponse toggleLike(String loginEmail, Long routeId) {
+        Member member = memberRepository.findByEmail(loginEmail)
+                .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
+
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route를 찾을 수 없습니다."));
+
+        route.setLikeCount(route.getLikeCount() + 1);
+        Route saved = routeRepository.save(route);
+
+        return RouteLikeResponse.builder()
+                .routeId(saved.getId())
+                .liked(true)
+                .likeCount(saved.getLikeCount())
+                .build();
     }
 
 }

@@ -13,6 +13,7 @@ public class RouteCreateRequest {
 
     // Route에 포함할 Plan 목록
     private List<RoutePlanItem> items;
+    private Boolean isPublic;
 
     @Data
     public static class RoutePlanItem {
