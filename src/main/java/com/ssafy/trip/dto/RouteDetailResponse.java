@@ -2,45 +2,52 @@ package com.ssafy.trip.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ssafy.trip.domain.Route;
-import lombok.Builder;
-import lombok.Getter;
+import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
-public class RouteSummaryResponse {
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor
+public class RouteDetailResponse {
 
-    private Long id;
     private String title;
     private String description;
 
     @JsonProperty("isPublic")
-    private Boolean isPublic;
-    
+    private boolean isPublic;
+
     private long likeCount;
     private Integer totalDays;
-
-    private String ownerName;        // 작성자 이름 / 닉네임
     private LocalDateTime createdAt;
+
+    private String ownerName;
+    private String ownerNickname;
 
     private boolean liked;
 
     @JsonProperty("isGuest")
     private boolean isGuest;
 
-    public static RouteSummaryResponse from(Route route, boolean liked, boolean isGuest) {
-        return RouteSummaryResponse.builder()
-                .id(route.getId())
+    private List<DaysDto> days;
+
+    public static RouteDetailResponse from(Route route, boolean liked, boolean isGuest
+            , List<DaysDto> days) {
+        return RouteDetailResponse.builder()
                 .title(route.getTitle())
                 .description(route.getDescription())
                 .isPublic(route.getIsPublic())
                 .likeCount(route.getLikeCount())
                 .totalDays(route.getTotalDays())
-                .ownerName(route.getMember().getName())  // Member에 맞게 수정
                 .createdAt(route.getCreatedAt())
+                .ownerName(route.getMember().getName())  // Member에 맞게 수정
+                .ownerNickname(route.getMember().getNickname())
                 .liked(liked)
                 .isGuest(isGuest)
+                .days(days)
                 .build();
     }
+
 }

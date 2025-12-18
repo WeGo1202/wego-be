@@ -1,19 +1,13 @@
 package com.ssafy.trip.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ssafy.trip.dto.AttractionDetailResponse;
 import com.ssafy.trip.dto.AttractionDto;
 import com.ssafy.trip.repository.AttractionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 //@Service
 //public class MapService {
@@ -93,5 +87,12 @@ public class MapService {
                 .stream()
                 .map(AttractionDto::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public AttractionDetailResponse getAttractionDetail(long id) {
+        return attractionRepository.findById(id)
+                .map(AttractionDetailResponse::from)
+                .orElseThrow(() -> new IllegalArgumentException("없는 관광지 입니다."));
     }
 }

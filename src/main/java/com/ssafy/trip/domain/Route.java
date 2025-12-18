@@ -2,6 +2,7 @@ package com.ssafy.trip.domain;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.ssafy.trip.dto.RouteUpdateRequest;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -78,5 +79,12 @@ public class Route {
 
     public void updateVisibility(boolean isPublic) {
         this.isPublic = isPublic;
+    }
+
+    public void updateRoute(RouteUpdateRequest request) {
+        this.title = request.getTitle();
+        this.description = request.getDescription();
+        this.totalDays = request.getTotalDays();
+        this.isPublic = request.getIsPublic();
     }
 }
