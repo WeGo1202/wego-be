@@ -3,18 +3,19 @@ package com.ssafy.trip.controller;
 
 import com.ssafy.trip.domain.Route;
 import com.ssafy.trip.dto.*;
-//import com.ssafy.trip.service.RouteAiService;
 import com.ssafy.trip.dto.ai.AiRouteRequest;
 import com.ssafy.trip.service.RouteAiService;
 import com.ssafy.trip.service.RouteService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/routes")
 @RequiredArgsConstructor
@@ -49,6 +50,15 @@ public class RouteController {
         return ResponseEntity.ok(route);
     }
 
+    @PutMapping("/{id}")
+    public RouteResponse updateRoute(@PathVariable Long id,
+                                     @RequestBody @Valid RouteUpdateRequest request,
+                                     Authentication authentication) {
+
+        String email = authentication.getName();
+        return routeService.updateRoute(email, id, request);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteRoute(@PathVariable Long id,
                                             Authentication authentication) {
@@ -66,17 +76,6 @@ public class RouteController {
         return ResponseEntity.ok(updated);
     }
 
-    // 🔹 공개 루트 게시판
-    @GetMapping("/public")
-    public ResponseEntity<Page<RouteSummaryResponse>> getPublicRoutes(
-            @RequestParam(defaultValue = "latest") String sort,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "12") int size
-    ) {
-        Page<RouteSummaryResponse> result = routeService.getPublicRoutes(sort, page, size);
-        return ResponseEntity.ok(result);
-    }
-
     // 🔹 공개 여부 수정
     @PatchMapping("/{id}/visibility")
     public ResponseEntity<Route> updateVisibility(@PathVariable Long id,
@@ -91,15 +90,17 @@ public class RouteController {
     @PostMapping("/{id}/like")
     public ResponseEntity<RouteLikeResponse> toggleLike(@PathVariable Long id,
                                                         Authentication authentication) {
-        String email = authentication.getName();
+
+        String email = null;
+        if (authentication != null) email = authentication.getName();
         RouteLikeResponse res = routeService.toggleLike(email, id);
         return ResponseEntity.ok(res);
     }
 
     /**
      * 🔹 AI 기반 루트 생성
-     *  - body: AiRouteRequest (query, preferredRegion, totalDaysHint)
-     *  - 반환: 생성된 Route (id 포함)
+     * - body: AiRouteRequest (query, preferredRegion, totalDaysHint)
+     * - 반환: 생성된 Route (id 포함)
      */
     @PostMapping("/ai")
     public ResponseEntity<Route> createRouteByAi(

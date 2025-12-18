@@ -1,15 +1,13 @@
 package com.ssafy.trip.controller;
 
 import com.ssafy.trip.domain.Attraction;
+import com.ssafy.trip.dto.AttractionDetailResponse;
 import com.ssafy.trip.dto.AttractionDto;
 import com.ssafy.trip.repository.AttractionRepository;
 import com.ssafy.trip.service.MapService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -33,6 +31,12 @@ public class MapController {
     ) {
         String keyword = (q == null || q.isBlank()) ? null : q.trim();
         return attractionRepository.searchAttractions(keyword, typeId);
+    }
+
+    @GetMapping("/attractions/{id}")
+    public AttractionDetailResponse getAttractionDetail(@PathVariable Long id) {
+
+        return mapService.getAttractionDetail(id);
     }
 
 }

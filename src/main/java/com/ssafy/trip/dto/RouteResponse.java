@@ -2,45 +2,37 @@ package com.ssafy.trip.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ssafy.trip.domain.Route;
-import lombok.Builder;
-import lombok.Getter;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
 @Getter
 @Builder
-public class RouteSummaryResponse {
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor
+public class RouteResponse {
 
     private Long id;
     private String title;
     private String description;
+    private Integer totalDays;
 
     @JsonProperty("isPublic")
     private Boolean isPublic;
-    
     private long likeCount;
-    private Integer totalDays;
-
-    private String ownerName;        // 작성자 이름 / 닉네임
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 
-    private boolean liked;
-
-    @JsonProperty("isGuest")
-    private boolean isGuest;
-
-    public static RouteSummaryResponse from(Route route, boolean liked, boolean isGuest) {
-        return RouteSummaryResponse.builder()
+    public static RouteResponse from(Route route) {
+        return RouteResponse.builder()
                 .id(route.getId())
                 .title(route.getTitle())
                 .description(route.getDescription())
+                .totalDays(route.getTotalDays())
                 .isPublic(route.getIsPublic())
                 .likeCount(route.getLikeCount())
-                .totalDays(route.getTotalDays())
-                .ownerName(route.getMember().getName())  // Member에 맞게 수정
                 .createdAt(route.getCreatedAt())
-                .liked(liked)
-                .isGuest(isGuest)
+                .updatedAt(route.getUpdatedAt())
                 .build();
     }
 }

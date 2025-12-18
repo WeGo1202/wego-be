@@ -1,14 +1,8 @@
 package com.ssafy.trip.service;
 
-import com.ssafy.trip.domain.Member;
-import com.ssafy.trip.domain.Plan;
-import com.ssafy.trip.domain.Route;
-import com.ssafy.trip.domain.RoutePlan;
+import com.ssafy.trip.domain.*;
 import com.ssafy.trip.dto.*;
-import com.ssafy.trip.repository.MemberRepository;
-import com.ssafy.trip.repository.PlanRepository;
-import com.ssafy.trip.repository.RouteRepository;
-import lombok.Builder;
+import com.ssafy.trip.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -18,7 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +23,8 @@ public class RouteService {
     private final MemberRepository memberRepository;
     private final PlanRepository planRepository;
     private final PlanService planService;
+    private final RouteLikeRepository routeLikeRepository;
+    private final RoutePlanRepository routePlanRepository;
 
     @Transactional
     public Route createRoute(String loginEmail, RouteCreateRequest request) {
@@ -91,6 +88,23 @@ public class RouteService {
     }
 
     @Transactional
+    public RouteResponse updateRoute(String email, Long routeId, RouteUpdateRequest request) {
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route를 찾을 수 없습니다."));
+
+        if (!route.getMember().getEmail().equals(email)) {
+            throw new IllegalArgumentException("해당 Route에 대해 수정 권한이 없습니다.");
+        }
+
+        route.updateRoute(request);
+
+        // JPA 영속 상태라 save() 안 해도 flush 되지만, 명시적으로
+        routeRepository.save(route);
+
+        return RouteResponse.from(route);
+    }
+
+    @Transactional
     public Route addPlanToRoute(String loginEmail, Long routeId, PlanRequest planRequest) {
         Member member = memberRepository.findByEmail(loginEmail)
                 .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
@@ -141,7 +155,7 @@ public class RouteService {
 
 
     @Transactional(readOnly = true)
-    public Page<RouteSummaryResponse> getPublicRoutes(String sort, int page, int size) {
+    public Page<RouteSummaryResponse> getPublicRoutes(String sort, int page, int size, String email) {
 
         Sort sortSpec;
         if ("popular".equalsIgnoreCase(sort)) {
@@ -156,8 +170,20 @@ public class RouteService {
 
         Page<Route> routes = routeRepository.findByIsPublicTrue(pageable);
 
-        // ❗ 여기서 네 static 메서드 재사용
-        return routes.map(RouteSummaryResponse::from);
+        Optional<Member> memberOpt = memberRepository.findByEmail(email);
+        boolean isGuest;
+        if (memberOpt.isEmpty()) isGuest = true;
+        else {
+            isGuest = false;
+        }
+        Member member = memberOpt.orElse(null);
+
+        AtomicBoolean liked = new AtomicBoolean(false);
+
+        return routes.map(route -> {
+            routeLikeRepository.findByRouteAndMember(route, member).ifPresent(like -> liked.set(true));
+            return RouteSummaryResponse.from(route, liked.get(), isGuest);
+        });
     }
 
     // 🔹 공개 여부 수정
@@ -183,21 +209,57 @@ public class RouteService {
 
     // 좋아요 (한 명이 여러 번 눌러도 그냥 +1/-1 관리)
     @Transactional
-    public RouteLikeResponse toggleLike(String loginEmail, Long routeId) {
-        Member member = memberRepository.findByEmail(loginEmail)
-                .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
-
+    public RouteLikeResponse toggleLike(String email, Long routeId) {
         Route route = routeRepository.findById(routeId)
                 .orElseThrow(() -> new IllegalArgumentException("Route를 찾을 수 없습니다."));
 
-        route.setLikeCount(route.getLikeCount() + 1);
-        Route saved = routeRepository.save(route);
+        Optional<Member> memberOpt = memberRepository.findByEmail(email);
+        if (memberOpt.isEmpty())
+            return RouteLikeResponse.builder()
+                    .routeId(routeId)
+                    .liked(false)
+                    .likeCount(route.getLikeCount())
+                    .build();
+
+        Member member = memberOpt.orElse(null);
+
+        AtomicBoolean liked = new AtomicBoolean(false);
+        routeLikeRepository.findByRouteAndMember(route, member).ifPresentOrElse(
+                like -> {
+                    route.decreaseLike();
+                    routeLikeRepository.delete(like);
+                }, () -> {
+                    route.increaseLike();
+                    liked.set(true);
+                    routeLikeRepository.save(
+                            RouteLike.builder()
+                                    .route(route)
+                                    .member(member)
+                                    .build());
+                }
+        );
 
         return RouteLikeResponse.builder()
-                .routeId(saved.getId())
-                .liked(true)
-                .likeCount(saved.getLikeCount())
+                .routeId(routeId)
+                .liked(liked.get())
+                .likeCount(route.getLikeCount())
                 .build();
+    }
+
+    @Transactional
+    public RouteDetailResponse getPublicRouteDetail(String email, Long routeId) {
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route를 찾을 수 없습니다."));
+
+        Optional<Member> memberOpt = memberRepository.findByEmail(email);
+        boolean isGuset = false;
+        if (memberOpt.isEmpty()) isGuset = true;
+
+        Member member = memberOpt.orElse(null);
+        AtomicBoolean liked = new AtomicBoolean(false);
+        routeLikeRepository.findByRouteAndMember(route, member).ifPresent(like -> liked.set(true));
+
+        return RouteDetailResponse.from(route, liked.get(), isGuset, null);
     }
 
 }
