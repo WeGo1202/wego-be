@@ -3,7 +3,6 @@ package com.ssafy.trip.dto;
 import com.ssafy.trip.domain.Attraction;
 import lombok.*;
 
-// com.ssafy.trip.dto.AttractionDto
 @Getter
 @Setter
 @NoArgsConstructor

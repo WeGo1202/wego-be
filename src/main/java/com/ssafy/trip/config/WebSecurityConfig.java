@@ -45,7 +45,8 @@ public class WebSecurityConfig {
                                 "/css/**", "/js/**", "/images/**",
                                 "/api/auth/**", "/api/tour/**", "/error",
                                 "/path", "/pathtest", "/api/routing/**", "/api/admin/**",
-                                "/api/routes/public/**", "/api/routes/*/like"
+                                "/api/routes/public/**", "/api/routes/*/like",
+                                "/api/routes/ai"
                         ).permitAll()
                         .anyRequest().authenticated()
                 );
