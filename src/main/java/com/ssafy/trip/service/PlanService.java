@@ -49,6 +49,7 @@ public class PlanService {
         plan.setPublic(request.isPublic());   // isPublic 필드 → setPublic()
         plan.setLocation(address);            // 🔥 여기 Address 세팅
         plan.setMember(member);               // 🔥 로그인된 회원 연결
+        plan.setAttractionId(request.getAttractionId());
 
         return planRepository.save(plan);
     }

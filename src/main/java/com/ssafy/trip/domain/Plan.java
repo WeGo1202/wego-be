@@ -18,13 +18,14 @@ public class Plan {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    private Long attractionId;
     private String title;
     private String description;
     private String thumbnail;
 
     private Integer period;
 
-    @Column(name="is_public")
+    @Column(name = "is_public")
     @ColumnDefault("false")
     private boolean isPublic;
 

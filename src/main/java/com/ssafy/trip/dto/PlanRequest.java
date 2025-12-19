@@ -7,6 +7,7 @@ import lombok.Data;
 public class PlanRequest {
 
     // Plan 기본 정보
+    private long attractionId;
     private String title;
     private String description;
     private String thumbnail;
