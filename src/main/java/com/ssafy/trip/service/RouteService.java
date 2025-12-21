@@ -11,9 +11,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +25,7 @@ public class RouteService {
     private final PlanService planService;
     private final RouteLikeRepository routeLikeRepository;
     private final RoutePlanRepository routePlanRepository;
+    private final CommentRepository commentRepository;
 
     @Transactional
     public Route createRoute(String loginEmail, RouteCreateRequest request) {
@@ -259,7 +260,57 @@ public class RouteService {
         AtomicBoolean liked = new AtomicBoolean(false);
         routeLikeRepository.findByRouteAndMember(route, member).ifPresent(like -> liked.set(true));
 
-        return RouteDetailResponse.from(route, liked.get(), isGuset, null);
+        List<RoutePlan> routePlans = routePlanRepository.findAllByRouteIdWithPlan(routeId);
+        Map<Integer, List<RoutePlan>> groupedByDay = routePlans.stream()
+                .collect(Collectors.groupingBy(
+                        RoutePlan::getDayIndex,
+                        TreeMap::new,
+                        Collectors.toList()
+                ));
+
+        List<DaysDto> daysDtoList = groupedByDay.entrySet().stream()
+                .map(entry -> {
+                    int dayIndex = entry.getKey();
+                    List<RoutePlan> plansInDay = entry.getValue();
+
+                    // 해당 일차 내에서 orderIndex 순으로 정렬하여 PlansDto 생성
+                    List<PlansDto> plansDtoList = plansInDay.stream()
+                            .sorted(Comparator.comparingInt(RoutePlan::getOrderIndex))
+                            .map(rp -> {
+                                Plan plan = rp.getPlan();
+                                return PlansDto.from(plan, rp.getOrderIndex());
+                            })
+                            .collect(Collectors.toList());
+
+                    return DaysDto.from(dayIndex, plansDtoList);
+                })
+                .toList();
+
+        return RouteDetailResponse.from(route, liked.get(), isGuset, daysDtoList);
     }
 
+
+    @Transactional
+    public List<CommentResponse> getComments(Long routeId) {
+        return commentRepository.findAllByRouteId(routeId).stream()
+                .map(comment -> CommentResponse.from(comment, comment.getMember()))
+                .toList();
+    }
+
+    @Transactional
+    public Comment postComment(String email, CommentRequest request, Long routeId) {
+        Member member = memberRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
+
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("루트 정보를 찾을 수 없습니다."));
+
+        Comment comment = Comment.builder()
+                .content(request.getContent())
+                .member(member)
+                .route(route)
+                .build();
+
+        return commentRepository.save(comment);
+    }
 }
