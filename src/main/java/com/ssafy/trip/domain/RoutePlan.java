@@ -30,7 +30,6 @@ public class RoutePlan {
     @JsonIgnore
     private Route route;
 
-
     // Attraction으로 변경 필요
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "plan_id", nullable = false)

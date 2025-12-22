@@ -122,7 +122,7 @@ public class RouteAiService {
         route.setDescription(aiRoute.getDescription());
         route.setMember(member);
         route.setTotalDays(aiRoute.getTotalDays() != null ? aiRoute.getTotalDays() : 1);
-        route.setIsPublic(false);     // AI로 생성된 루트는 기본 비공개
+        route.setIsPublic(true);
         route.setLikeCount(0L);      // 좋아요 0으로 시작
 
         // createdAt, updatedAt은 Auditing으로 자동 세팅됨

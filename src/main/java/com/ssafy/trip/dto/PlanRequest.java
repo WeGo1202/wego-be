@@ -1,4 +1,3 @@
-// com.ssafy.trip.web.plan.dto.PlanRequest.java
 package com.ssafy.trip.dto;
 
 import lombok.Data;
