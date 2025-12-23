@@ -49,7 +49,7 @@ dependencies {
 	implementation "com.openai:openai-java:4.12.0"
 
 	// Redis
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 }
 
 tasks.named('test') {

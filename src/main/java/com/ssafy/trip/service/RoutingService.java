@@ -1,3 +1,4 @@
+// src/main/java/com/ssafy/trip/service/RoutingService.java
 package com.ssafy.trip.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -5,25 +6,27 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssafy.trip.dto.RoutingRequest;
 import com.ssafy.trip.dto.RoutingResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.time.Duration;
+import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RoutingService {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final RedisTemplate<String, String> redisTemplate;
 
     @Value("${naver.map.client-id}")
     private String naverClientId;
@@ -34,37 +37,97 @@ public class RoutingService {
     private static final String NAVER_DIRECTION_URL =
             "https://maps.apigw.ntruss.com/map-direction/v1/driving";
 
+    private static final String ROUTING_CACHE_PREFIX = "routing:";
+    private static final Duration ROUTING_CACHE_TTL = Duration.ofMinutes(10);
+
     public RoutingResponse getRoute(RoutingRequest request) {
         List<RoutingRequest.Point> original = request.getPoints();
         if (original == null || original.size() < 2) {
             throw new IllegalArgumentException("최소 2개 이상의 좌표가 필요합니다.");
         }
 
+        // 캐시 키 생성 (요청 좌표 목록 기준)
+        String cacheKey = buildRoutingCacheKey(original);
+
+        // 1) Redis 캐시 조회
+        try {
+            String cachedJson = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedJson != null) {
+                RoutingResponse cached =
+                        objectMapper.readValue(cachedJson, RoutingResponse.class);
+                log.debug("[ROUTING] 캐시 HIT: key={}", cacheKey);
+                return cached;
+            }
+        } catch (Exception e) {
+            log.warn("[ROUTING] 캐시 조회 실패, 외부 API 호출로 fallback. key={}", cacheKey, e);
+        }
+
+        // 2) (선택) TSP로 방문 순서 최적화
         List<RoutingRequest.Point> points = optimizeExactTspPath(original);
 
-        RoutingRequest.Point startPoint = points.get(0);
-        RoutingRequest.Point goalPoint  = points.get(points.size() - 1);
+        // 3) 구간별(A->B, B->C, ...)로 네이버 길찾기 호출해서 누적
+        long totalDistanceMeters = 0;
+        long totalDurationSeconds = 0;
+        List<RoutingResponse.LatLng> mergedPolyline = new ArrayList<>();
 
+        for (int i = 0; i < points.size() - 1; i++) {
+            RoutingRequest.Point startPoint = points.get(i);
+            RoutingRequest.Point goalPoint  = points.get(i + 1);
+
+            NaverLeg leg = callNaverDirectionLeg(startPoint, goalPoint);
+
+            totalDistanceMeters += leg.distanceMeters;
+            totalDurationSeconds += leg.durationSeconds;
+
+            // 폴리라인 합치기 (구간 경계에서 첫 점 중복 제거)
+            if (!leg.polyline.isEmpty()) {
+                if (!mergedPolyline.isEmpty()) {
+                    leg.polyline.remove(0);
+                }
+                mergedPolyline.addAll(leg.polyline);
+            }
+        }
+
+        RoutingResponse res = new RoutingResponse();
+        res.setTotalDistanceMeters((int) totalDistanceMeters);
+        res.setTotalDurationSeconds((int) totalDurationSeconds);
+        res.setPolyline(mergedPolyline);
+
+        // 4) Redis에 캐시 저장
+        try {
+            String json = objectMapper.writeValueAsString(res);
+            redisTemplate.opsForValue().set(cacheKey, json, ROUTING_CACHE_TTL);
+            log.debug("[ROUTING] 캐시 SET: key={}", cacheKey);
+        } catch (Exception e) {
+            log.warn("[ROUTING] 캐시 저장 실패: key={}", cacheKey, e);
+        }
+
+        return res;
+    }
+
+    /**
+     * 요청된 포인트 목록으로부터 캐시 키 생성
+     *  - "lat,lng|lat,lng|..." 문자열을 만들고 hashCode() 사용
+     */
+    private String buildRoutingCacheKey(List<RoutingRequest.Point> points) {
+        String raw = points.stream()
+                .map(p -> p.getLat() + "," + p.getLng())
+                .collect(Collectors.joining("|"));
+
+        int hash = raw.hashCode();
+        return ROUTING_CACHE_PREFIX + Integer.toHexString(hash);
+    }
+
+    /** 구간(START -> GOAL) 1번 길찾기 호출 결과 */
+    private NaverLeg callNaverDirectionLeg(RoutingRequest.Point startPoint, RoutingRequest.Point goalPoint) {
         String start = startPoint.getLng() + "," + startPoint.getLat();
         String goal  = goalPoint.getLng() + "," + goalPoint.getLat();
-
-        String waypoints = null;
-        if (points.size() > 2) {
-            waypoints = points.subList(1, points.size() - 1).stream()
-                    .map(p -> p.getLng() + "," + p.getLat())
-                    .collect(Collectors.joining("|"));
-        }
 
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromHttpUrl(NAVER_DIRECTION_URL)
                 .queryParam("start", start)
                 .queryParam("goal", goal)
-                // trafast: 빠른(시간 위주), traoptimal: 최적 (시간/비용 종합)
                 .queryParam("option", "trafast");
-
-        if (waypoints != null && !waypoints.isBlank()) {
-            builder.queryParam("waypoints", waypoints);
-        }
 
         String url = builder.toUriString();
 
@@ -76,16 +139,11 @@ public class RoutingService {
 
         try {
             ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    String.class
+                    url, HttpMethod.GET, entity, String.class
             );
 
             String body = response.getBody();
-            if (body == null) {
-                throw new RuntimeException("네이버 길찾기 응답이 비어 있습니다.");
-            }
+            if (body == null) throw new RuntimeException("네이버 길찾기 응답이 비어 있습니다.");
 
             JsonNode root = objectMapper.readTree(body);
             JsonNode routesNode = root.path("route").path("trafast");
@@ -93,6 +151,7 @@ public class RoutingService {
                 throw new RuntimeException("Naver Direction: trafast 경로가 없습니다.");
             }
 
+            // 여러 후보 중 distance가 가장 짧은 것 선택
             JsonNode bestRoute = null;
             int bestDistance = Integer.MAX_VALUE;
 
@@ -104,16 +163,12 @@ public class RoutingService {
                     bestRoute = routeNode;
                 }
             }
-
-            if (bestRoute == null) {
-                throw new RuntimeException("Naver Direction: 유효한 경로를 찾지 못했습니다.");
-            }
+            if (bestRoute == null) throw new RuntimeException("Naver Direction: 유효한 경로를 찾지 못했습니다.");
 
             JsonNode summary = bestRoute.path("summary");
             int distance = summary.path("distance").asInt();
             int durationMs = summary.path("duration").asInt();
 
-            // ✅ 4. path → polyline
             List<RoutingResponse.LatLng> polyline = new ArrayList<>();
             for (JsonNode p : bestRoute.path("path")) {
                 double lng = p.get(0).asDouble();
@@ -124,11 +179,7 @@ public class RoutingService {
                 polyline.add(latLng);
             }
 
-            RoutingResponse res = new RoutingResponse();
-            res.setTotalDistanceMeters(distance);
-            res.setTotalDurationSeconds(durationMs / 1000);
-            res.setPolyline(polyline);
-            return res;
+            return new NaverLeg(distance, durationMs / 1000, polyline);
 
         } catch (HttpClientErrorException e) {
             System.out.println("[NAVER ERROR] " + e.getStatusCode());
@@ -139,6 +190,18 @@ public class RoutingService {
         }
     }
 
+    /** 내부용 DTO */
+    private static class NaverLeg {
+        final long distanceMeters;
+        final long durationSeconds;
+        final List<RoutingResponse.LatLng> polyline;
+
+        NaverLeg(long distanceMeters, long durationSeconds, List<RoutingResponse.LatLng> polyline) {
+            this.distanceMeters = distanceMeters;
+            this.durationSeconds = durationSeconds;
+            this.polyline = polyline;
+        }
+    }
 
     private List<RoutingRequest.Point> optimizeExactTspPath(List<RoutingRequest.Point> original) {
         int n = original.size();
